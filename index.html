@@ -3,10 +3,8 @@
 
 <meta name="description" content="Dinuka Salwathura - Personal Profile | Computer Science Engineer | Co-Founder | Tech Enthusiast | Sri Lankan " />
 
-<!-- Twitter Card data -->
 <meta name="twitter:card" value="Dinuka Salwathura - Personal Profile | Computer Science Engineer | Co-Founder | Tech Enthusiast | Sri Lankan ">
 
-<!-- Open Graph data -->
 <meta property="og:title" content="Dinuka Salwathura" />
 <meta property="og:type" content="article" />
 <meta property="og:url" content="https://dinukasal.github.io/" />
@@ -22,50 +20,129 @@
     <link rel="stylesheet" href="style.css">
     <title>Dinuka Salwathura</title>
 
-    <!-- Global site tag (gtag.js) - Google Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-8EG1JXCSR4"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag() { dataLayer.push(arguments); }
         gtag('js', new Date());
-
         gtag('config', 'G-8EG1JXCSR4');
     </script>
 </head>
 
 <body>
-    <div class="grid-2">
-        <div class="section-1">
-            <!--i class="fas fa-code fa-5x white"></i-->
-            <img src="./pp6.jpg" style="height:250px"></img>
-            <h2>Dinuka Salwathura</h2>
-            <p>Colombo,Sri Lanka.</p>
-            <a href="https://stackoverflow.com/users/7242275/dinuka-salwathura"><i class="fab fa-stack-overflow"></i></a>
-            <a href="https://twitter.com/dinukasal"><i class="fab fa-twitter"></i></a>
-            <a href="https://github.com/dinukasal"><i class="fab fa-github"></i></a>
-            <a href="https://www.linkedin.com/in/dinukasalwathura/"><i class="fab fa-linkedin"></i></a>
-            <a href="https://www.facebook.com/dinuka.salwathura"><i class="fab fa-facebook"></i></a>
-            <a href="https://dinukasblog.wordpress.com"><i class="fab fa-wordpress"></i></a>
-            <a href="https://dinukasal.medium.com"><i class="fab fa-medium"></i></a>
-        </div>
-        <div class="section-2">
-            <h2>About</h2>
-            <p>Computer Science Engineer</p>
-            <p>Full Stack Engineer at <a href="https://screenapp.io">ScreenApp</a></p>
-            <p>Ex Tech Lead at Sysco - Global Data Analytics & Insights Team</p>
-            <p>Ex Co-founder of Stack Technologies</p>
-            <h2>Skills</h2>
-            <p>Tensorflow, Apache Spark, ETL, aws, Python, Terraform, Kubernetes, React, React Native, DevOps(aws, azure, gcloud, docker), NodeJS</p>
-            <h2>Projects</h2>
-            <a href="https://github.com/dinukasal/install">Linux Install Script</a>
-            <a href="https://github.com/dinukasal/secure-cloud">Hybrid Encrypted Secure File Server</a>
-            <a href="https://github.com/dinukasal/rest-expressjs">DDOS Secure Rest API</a>
-            <a href="https://github.com/dinukasal/mvc">PHP MVC Implementation</a>
-            <a href="https://github.com/dinukasal/bellscheduler">Bell scheduling application for Schools</a>
-            <h2>Contact</h2>
-            <p>dinukasal@gmail.com</p>
-<!--             <p>+94 71 469 7757</p> -->
-        </div>
+    <div class="container">
+        <header class="profile-section">
+            <div class="profile-image">
+                <img src="./pp6.jpg" alt="Dinuka Salwathura">
+            </div>
+            <h1>Dinuka Salwathura</h1>
+            <p class="location"><i class="fas fa-map-marker-alt"></i> Colombo, Sri Lanka</p>
+            <div class="social-links">
+                <a href="https://stackoverflow.com/users/7242275/dinuka-salwathura" target="_blank" class="social-link" title="Stack Overflow">
+                    <i class="fab fa-stack-overflow"></i>
+                </a>
+                <a href="https://twitter.com/dinukasal" target="_blank" class="social-link" title="Twitter">
+                    <i class="fab fa-twitter"></i>
+                </a>
+                <a href="https://github.com/dinukasal" target="_blank" class="social-link" title="GitHub">
+                    <i class="fab fa-github"></i>
+                </a>
+                <a href="https://www.linkedin.com/in/dinukasalwathura/" target="_blank" class="social-link" title="LinkedIn">
+                    <i class="fab fa-linkedin"></i>
+                </a>
+                <a href="https://www.facebook.com/dinuka.salwathura" target="_blank" class="social-link" title="Facebook">
+                    <i class="fab fa-facebook"></i>
+                </a>
+                <a href="https://dinukasblog.wordpress.com" target="_blank" class="social-link" title="Blog">
+                    <i class="fab fa-wordpress"></i>
+                </a>
+                <a href="https://dinukasal.medium.com" target="_blank" class="social-link" title="Medium">
+                    <i class="fab fa-medium"></i>
+                </a>
+            </div>
+        </header>
+
+        <main class="content">
+            <section class="card">
+                <h2><i class="fas fa-user"></i> About</h2>
+                <p class="title">Computer Science Engineer</p>
+                <div class="work-history">
+                    <div class="work-item">
+                        <a href="https://screenapp.io" target="_blank" class="company">ScreenApp</a>
+                        <span class="role">Full Stack Engineer</span>
+                    </div>
+                    <div class="work-item">
+                        <span class="company">Sysco</span>
+                        <span class="role">Tech Lead - Global Data Analytics & Insights Team</span>
+                    </div>
+                    <div class="work-item">
+                        <span class="company">Stack Technologies</span>
+                        <span class="role">Co-founder</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2><i class="fas fa-code"></i> Skills</h2>
+                <div class="skills-grid">
+                    <span class="skill-tag">Tensorflow</span>
+                    <span class="skill-tag">Apache Spark</span>
+                    <span class="skill-tag">ETL</span>
+                    <span class="skill-tag">AWS</span>
+                    <span class="skill-tag">Python</span>
+                    <span class="skill-tag">Terraform</span>
+                    <span class="skill-tag">Kubernetes</span>
+                    <span class="skill-tag">React</span>
+                    <span class="skill-tag">React Native</span>
+                    <span class="skill-tag">DevOps</span>
+                    <span class="skill-tag">Azure</span>
+                    <span class="skill-tag">GCP</span>
+                    <span class="skill-tag">Docker</span>
+                    <span class="skill-tag">NodeJS</span>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2><i class="fas fa-folder-open"></i> Projects</h2>
+                <div class="projects-grid">
+                    <a href="https://mathemly.com" target="_blank" class="project-card">
+                        <h3>Mathemly</h3>
+                        <p>Math learning platform</p>
+                    </a>
+                    <a href="https://github.com/dinukasal/install" target="_blank" class="project-card">
+                        <h3>Linux Install Script</h3>
+                        <p>Automated Linux installation scripts</p>
+                    </a>
+                    <a href="https://github.com/dinukasal/secure-cloud" target="_blank" class="project-card">
+                        <h3>Secure Cloud</h3>
+                        <p>Hybrid Encrypted Secure File Server</p>
+                    </a>
+                    <a href="https://github.com/dinukasal/rest-expressjs" target="_blank" class="project-card">
+                        <h3>REST API</h3>
+                        <p>DDOS Secure Rest API with ExpressJS</p>
+                    </a>
+                    <a href="https://github.com/dinukasal/mvc" target="_blank" class="project-card">
+                        <h3>PHP MVC</h3>
+                        <p>PHP MVC Framework Implementation</p>
+                    </a>
+                    <a href="https://github.com/dinukasal/bellscheduler" target="_blank" class="project-card">
+                        <h3>Bell Scheduler</h3>
+                        <p>School bell scheduling application</p>
+                    </a>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2><i class="fas fa-envelope"></i> Contact</h2>
+                <a href="mailto:dinukasal@gmail.com" class="contact-link">
+                    <i class="fas fa-envelope"></i> dinukasal@gmail.com
+                </a>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 Dinuka Salwathura</p>
+        </footer>
     </div>
 </body>
 
