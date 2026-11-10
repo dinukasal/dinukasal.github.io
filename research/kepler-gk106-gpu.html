@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<meta name="description" content="Research: running a Kepler-era NVIDIA GeForce GTX 660 (GK106) on Ubuntu 24.04 in 2026 - driver support, kernel compatibility, NVENC, passthrough and CUDA limits." />
+<meta property="og:title" content="Kepler GK106 (GTX 660) on Ubuntu 24.04 - Research" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://dinukasal.github.io/research/kepler-gk106-gpu.html" />
+<meta property="og:description" content="A field report on driver support, kernel compatibility, NVENC and virtualisation viability for a 2012 Kepler GPU in 2026." />
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.4.1/css/all.css"
+        integrity="sha384-5sAR7xN1Nv6T6+dT2mhtzEpVJvfS3NScPQTrOxhwjIuvcA67KV2R5Jz6kr4abQsz" crossorigin="anonymous">
+    <link rel="stylesheet" href="../style.css">
+    <title>Kepler GK106 on Ubuntu 24.04 | Dinuka Salwathura</title>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-8EG1JXCSR4"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'G-8EG1JXCSR4');
+    </script>
+</head>
+
+<body>
+    <div class="container">
+        <nav class="article-nav">
+            <a href="../index.html"><i class="fas fa-arrow-left"></i> Back to profile</a>
+        </nav>
+
+        <article class="card article">
+<h1 id="running-a-kepler-era-gpu-geforce-gtx-660-gk106-on-ubuntu-2404-in-2026">Running a Kepler-Era GPU (GeForce GTX 660 / GK106) on Ubuntu 24.04 in 2026</h1>
+<p><strong>A field report on driver support, kernel compatibility, NVENC, and virtualisation viability</strong></p>
+<p><em>Test date: 2026-11-10 · Ubuntu 24.04.5 LTS · Kernel 7.0.0-42-generic (HWE)</em></p>
+<hr />
+<h2 id="abstract">Abstract</h2>
+<p>A Gigabyte GeForce GTX 660 (NVIDIA GK106, Kepler, 2012) was subjected to a full capability audit on a modern Ubuntu 24.04.5 LTS host running the 7.0.0 HWE kernel. We measured what actually works, what can be made to work, and what is physically impossible. The headline results:</p>
+<ol>
+<li><strong>The proprietary driver is recoverable, but only on the 6.8 GA kernel.</strong> Driver 470.256.02 (the last release supporting Kepler) fails on kernels newer than ~6.11, but was verified to build cleanly via DKMS against kernel 6.8.0-147 and 6.8.0-149 in a KVM guest.</li>
+<li><strong>Hardware video encode is reachable — but not with the distribution ffmpeg.</strong> Ubuntu 24.04's ffmpeg 6.1.1 is compiled against <code>nv-codec-headers</code> 12.x and therefore refuses driver 470 at runtime (<code>Required: 12.1 Found: 11.1</code>). Rebuilding ffmpeg 6.1.1 against <code>nv-codec-headers</code> 11.1.5.3 resolves this.</li>
+<li><strong>GPU passthrough into a VM is blocked by a missing VBIOS</strong>, not by the driver: <code>RmInitAdapter failed (0x22:0x56:667)</code> with <code>Video BIOS: ??.??.??.??.??</code>.</li>
+<li><strong>Tensor-core "unlock" tooling is inapplicable</strong> — Kepler has no tensor cores, no BF16, no TF32, and no <code>IMLA4</code> instruction.</li>
+<li><strong>TensorFlow 2.x cannot use this GPU under any configuration</strong>, because compute capability 3.0 (<code>sm_30</code>) was dropped from all TF2 builds. The practical CUDA ceiling is CUDA 10.2.</li>
+</ol>
+<p>The card remains useful for exactly one modern workload: H.264 decode/encode acceleration for a media server.</p>
+<hr />
+<h2 id="1-test-environment">1. Test environment</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OS</td>
+<td>Ubuntu 24.04.5 LTS (noble)</td>
+</tr>
+<tr>
+<td>Kernel (host)</td>
+<td><code>7.0.0-42-generic</code> (HWE), <code>#42~24.04.1-Ubuntu</code></td>
+</tr>
+<tr>
+<td>Kernel (GA candidate)</td>
+<td><code>6.8.0-149.149</code></td>
+</tr>
+<tr>
+<td>CPU</td>
+<td>Intel Core i7-10700F (16 threads, <strong>no iGPU</strong>)</td>
+</tr>
+<tr>
+<td>RAM</td>
+<td>16 GB</td>
+</tr>
+<tr>
+<td>GPU</td>
+<td>NVIDIA GK106 [GeForce GTX 660], <code>10de:11c0</code>, subsystem <code>1458:354e</code> (Gigabyte), 2 GB GDDR5, VBIOS <code>80.06.58.00.03</code></td>
+</tr>
+<tr>
+<td>GPU audio</td>
+<td>GK106 HDMI Audio Controller <code>10de:0e0b</code></td>
+</tr>
+<tr>
+<td>In-tree driver</td>
+<td><code>nouveau</code> 1.4.2, Mesa 25.2.8</td>
+</tr>
+<tr>
+<td>PCIe link</td>
+<td><code>LnkCap 8GT/s x16</code> but <code>LnkSta 2.5GT/s (downgraded)</code></td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>Note on the CPU:</strong> the <code>F</code> suffix means no integrated graphics. The GTX 660 is the <em>only</em> display device in the system, so the motherboard's video outputs are non-functional. This is a frequent source of "the GPU doesn't work" misdiagnosis.</p>
+</blockquote>
+<hr />
+<h2 id="2-support-matrix-what-supports-gk106-in-2026">2. Support matrix: what supports GK106 in 2026</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Driver branch</th>
+<th>Supports GK106</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nouveau</code> (in-tree)</td>
+<td>✅</td>
+<td>Works, but no reclocking on Kepler and no video encode</td>
+</tr>
+<tr>
+<td>NVIDIA 390.xx</td>
+<td>⚠️</td>
+<td>Last <em>legacy</em> branch, but too old for noble's Xorg/Wayland</td>
+</tr>
+<tr>
+<td><strong>NVIDIA 470.256.02</strong></td>
+<td>✅</td>
+<td><strong>Last driver supporting Kepler at all</strong></td>
+</tr>
+<tr>
+<td>NVIDIA 535.xx</td>
+<td>❌</td>
+<td>Kepler dropped</td>
+</tr>
+<tr>
+<td>NVIDIA 570.xx</td>
+<td>❌</td>
+<td>Kepler dropped</td>
+</tr>
+<tr>
+<td>CUDA 11.x / 12.x</td>
+<td>❌</td>
+<td><code>sm_30</code> dropped after CUDA 10.2</td>
+</tr>
+<tr>
+<td>TensorFlow 2.x</td>
+<td>❌</td>
+<td>Requires CC ≥ 3.5 (≥ 5.0 in TF 2.16+)</td>
+</tr>
+<tr>
+<td>PyTorch (any modern wheel)</td>
+<td>❌</td>
+<td><code>sm_50</code>+ builds</td>
+</tr>
+<tr>
+<td>NVENC</td>
+<td>✅ H.264 only</td>
+<td>1st-gen encoder, ~2 concurrent sessions (patchable)</td>
+</tr>
+<tr>
+<td>NVDEC</td>
+<td>✅ H.264 / MPEG-2 / VC-1</td>
+<td>No HEVC/VP9/AV1 (predates them)</td>
+</tr>
+<tr>
+<td>OpenGL</td>
+<td>✅ 4.3 (Mesa nvc0) / 4.6 (proprietary)</td>
+<td></td>
+</tr>
+<tr>
+<td>Vulkan</td>
+<td>✅ (nvc0)</td>
+<td></td>
+</tr>
+<tr>
+<td>OpenCL</td>
+<td>⚠️ 1.2</td>
+<td>Proprietary or Mesa Clover</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="3-the-kernel-compatibility-cliff">3. The kernel-compatibility cliff</h2>
+<h3 id="31-observation">3.1 Observation</h3>
+<p>The host had previously seen driver attempts across four branches, all removed:</p>
+<pre><code>rc  nvidia-kernel-common-390    390.157-0ubuntu7
+rc  nvidia-kernel-common-470    470.256.02-0ubuntu0.24.04.1
+rc  nvidia-kernel-common-535    535.274.02-0ubuntu0.24.04.2
+rc  linux-modules-nvidia-570-6.11.0-29-generic
+ii  cuda-repo-ubuntu2204-12-0-local   12.0.0-525.60.13-1   ← CUDA 12, useless for sm_30
+</code></pre>
+<p><code>/var/lib/dkms</code> was empty — i.e. no module had ever built successfully on this host.</p>
+<h3 id="32-why">3.2 Why</h3>
+<p>Driver 470 predates the kernel APIs used by 6.14+/7.0. Ubuntu's <em>prebuilt</em> signed module packages confirm the cutoff empirically:</p>
+<pre><code>$ apt-cache policy linux-modules-nvidia-470-generic-hwe-24.04
+  Candidate: 6.11.0-29.29~24.04.1+3        ← stops at 6.11
+</code></pre>
+<h3 id="33-verification-in-a-kvm-guest">3.3 Verification in a KVM guest</h3>
+<p>A throwaway Ubuntu 24.04 cloud-image VM (4 vCPU / 4 GB, kernel <strong>6.8.0-147 GA</strong>) was used to test the build without touching the host:</p>
+<pre><code class="language-bash">sudo apt-get install -y nvidia-dkms-470 nvidia-kernel-common-470 \
+     libnvidia-encode-470 libnvidia-decode-470 \
+     libnvidia-compute-470 nvidia-utils-470
+dkms status
+</code></pre>
+<p><strong>Result:</strong></p>
+<pre><code>nvidia/470.256.02, 6.8.0-147-generic, x86_64: installed
+nvidia/470.256.02, 6.8.0-149-generic, x86_64: installed
+
+/lib/modules/6.8.0-147-generic/updates/dkms/
+  nvidia.ko.zst  nvidia-modeset.ko.zst  nvidia-uvm.ko.zst
+  nvidia-drm.ko.zst  nvidia-peermem.ko.zst
+</code></pre>
+<p>Both the running guest kernel and the host's GA candidate (<code>6.8.0-149</code>) built without patches. <strong>The 6.8 GA kernel + driver 470 combination is therefore the only viable proprietary-driver path on Ubuntu 24.04 for Kepler.</strong></p>
+<hr />
+<h2 id="4-nvenc-the-hidden-api-version-gate">4. NVENC: the hidden API-version gate</h2>
+<h3 id="41-the-problem">4.1 The problem</h3>
+<p>Ubuntu's <code>ffmpeg 6.1.1-3ubuntu5</code> <em>does</em> ship <code>h264_nvenc</code>, <code>hevc_nvenc</code> and the <code>*_cuvid</code> decoders. But the binary contains a hard version check:</p>
+<pre><code>$ strings /usr/lib/x86_64-linux-gnu/libavcodec.so.60 | grep -i nvenc
+Driver does not support the required nvenc API version. Required: %d.%d Found: %d.%d
+The minimum required Nvidia driver for nvenc is %s or newer
+</code></pre>
+<p>noble's ffmpeg is built against <code>nv-codec-headers</code> 12.x (NVENC API 12.1), which demands driver <strong>≥ 525</strong>. Driver 470 reports API <strong>11.1</strong>, so encode fails at initialisation even when the driver and hardware are perfectly functional.</p>
+<h3 id="42-the-fix">4.2 The fix</h3>
+<p>Rebuild ffmpeg against headers matching the driver:</p>
+<pre><code class="language-bash">git clone --depth 1 --branch n11.1.5.3 https://github.com/FFmpeg/nv-codec-headers.git
+cd nv-codec-headers &amp;&amp; sudo make install
+grep -E 'NVENCAPI_(MAJOR|MINOR)' /usr/local/include/ffnvcodec/nvEncodeAPI.h
+#   #define NVENCAPI_MAJOR_VERSION 11
+#   #define NVENCAPI_MINOR_VERSION 1
+
+curl -fsSL -o ff.tar.xz https://ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz
+tar xf ff.tar.xz &amp;&amp; cd ffmpeg-6.1.1
+./configure --prefix=/usr/local/nv --disable-doc --disable-debug \
+  --enable-nvenc --disable-everything --enable-protocol=file \
+  --enable-muxer=mp4 --enable-encoder=h264_nvenc,hevc_nvenc \
+  --enable-indev=lavfi --enable-filter=testsrc2,format,scale,null,color \
+  --enable-avfilter --enable-swscale
+make -j4 &amp;&amp; sudo make install
+</code></pre>
+<p><strong>Result (verified in the VM):</strong></p>
+<pre><code>ffmpeg version 6.1.1
+ V....D h264_nvenc   NVIDIA NVENC H.264 encoder (codec h264)
+ V....D hevc_nvenc   NVIDIA NVENC hevc encoder (codec hevc)
+</code></pre>
+<p>Note that <code>hevc_nvenc</code> compiles but is <em>not usable on GK106</em> — Kepler's NVENC is H.264-only. Hardware capability, not software, is the limit.</p>
+<h3 id="43-session-limit">4.3 Session limit</h3>
+<p>Consumer drivers cap concurrent NVENC sessions (historically 2). <a href="https://github.com/keylase/nvidia-patch"><code>keylase/nvidia-patch</code></a> lists <strong>470.256.02</strong> as supported for both its NVENC and NVDEC patches, removing the cap by patching <code>libnvidia-encode.so</code> / <code>libnvcuvid.so</code>.</p>
+<hr />
+<h2 id="5-gpu-passthrough-blocked-by-vbios-not-by-software">5. GPU passthrough: blocked by VBIOS, not by software</h2>
+<h3 id="51-setup">5.1 Setup</h3>
+<p>IOMMU was already active (<code>dmar0</code> present, GPU + HDMI audio in isolated group 1). The card was hot-unbound from <code>nouveau</code> and bound to <code>vfio-pci</code>:</p>
+<pre><code class="language-bash">echo 0000:01:00.0 &gt; /sys/bus/pci/drivers/nouveau/unbind
+echo vfio-pci &gt; /sys/bus/pci/devices/0000:01:00.0/driver_override
+echo 0000:01:00.0 &gt; /sys/bus/pci/drivers/vfio-pci/bind
+</code></pre>
+<p>The VM was launched with <code>-machine q35</code>, dedicated <code>pcie-root-port</code>s, <code>x-vga=on</code>, and <code>vfio-pci disable_idle_d3=1</code>.</p>
+<h3 id="52-result">5.2 Result</h3>
+<p>The guest enumerated the card correctly and loaded driver 470 — but the adapter failed to initialise:</p>
+<pre><code>nvidia 0000:01:00.0: vgaarb: VGA decodes changed: decodes=none:owns=none
+NVRM: loading NVIDIA UNIX x86_64 Kernel Module 470.256.02
+NVRM: GPU 0000:01:00.0: RmInitAdapter failed! (0x22:0x56:667)
+NVRM: GPU 0000:01:00.0: rm_init_adapter failed, device minor number 0
+
+$ nvidia-smi
+No devices were found
+
+$ cat /proc/driver/nvidia/gpus/*/information
+Model:        NVIDIA GeForce GTX 660
+DMA Size:     36 bits
+Video BIOS:   ??.??.??.??.??        ← root cause
+</code></pre>
+<p>Legacy Kepler adapters require their option ROM inside the guest. Dumping it from the host failed:</p>
+<pre><code>$ echo 1 &gt; /sys/bus/pci/devices/0000:01:00.0/rom
+$ cat /sys/bus/pci/devices/0000:01:00.0/rom &gt; gk106.rom
+cat: .../rom: Input/output error        # empty file
+</code></pre>
+<p>Attempts that did <strong>not</strong> resolve it: <code>x-vga=on</code>, <code>vfio-pci.disable_idle_d3=1</code>, <code>-machine q35</code> with explicit PCIe root ports, rebinding <code>nouveau</code> before the dump. The remaining untested routes are a boot-time <code>vfio-pci.ids=10de:11c0,10de:0e0b</code> binding (so the ROM BAR is never claimed) or supplying a vendor-matched ROM via <code>romfile=</code>.</p>
+<p><strong>Conclusion:</strong> passthrough is <em>probably</em> achievable with a VBIOS blob, but it is not a configuration problem — no software knob tested fixes a missing ROM.</p>
+<hr />
+<h2 id="6-tensor-core-unlock-tooling-inapplicable">6. Tensor-core "unlock" tooling: inapplicable</h2>
+<p><a href="https://github.com/zagitta/gpu-unlock"><code>Zagitta/gpu-unlock</code></a> is a kernel module that runs before the NVIDIA driver binds and writes tensor-core <strong>speed selectors</strong>:</p>
+<blockquote>
+<p>writes the speed selectors (SS0 <code>0x88888888</code>, which selects the full BF16 rate, and the 4-bit SS1 <code>0x8</code> IMLA4) and performs an FLR before the unmodified NVIDIA driver binds the card</p>
+</blockquote>
+<p>Its supported matrix covers Ampere (stable), Ada and Turing (experimental), Blackwell (unsupported). Kepler is absent, and a grep of <code>kernel/gpu_unlock/recipes.c</code> returns <strong>zero</strong> matches for Kepler/GK10x/<code>sm_30</code>.</p>
+<p>The reason is physical, not political: tensor cores were introduced with Volta/Turing (2017+). GK106 (2012) has no tensor cores, no BF16, no TF32 and no <code>IMLA4</code> instruction. There is no half-rate cap to lift and no selector to write. Likewise, the <code>sm_30</code> ceiling in CUDA is a <em>toolkit/compiler</em> limit (last supported: CUDA 10.2), not a driver cap, so no patch exists or can exist.</p>
+<hr />
+<h2 id="7-machine-learning-tf2-cannot-use-this-card">7. Machine learning: TF2 cannot use this card</h2>
+<p>A representative workload (an LSTM price-forecasting pipeline: 982-line script, <code>tensorflow.keras</code>, 833 <code>.h5</code> models, thread/process pools) was evaluated as a candidate GPU workload.</p>
+<ul>
+<li>The script contains <strong>no explicit device code</strong> — it relies on TensorFlow auto-detecting a GPU.</li>
+<li>TensorFlow 2.x requires compute capability <strong>≥ 3.5</strong> (≥ 5.0 from TF 2.16 onward). GK106 is <strong>3.0</strong>.</li>
+<li>Only TF <strong>1.15</strong> with CUDA 10.0/10.2 can target <code>sm_30</code>, and the workload uses TF2-only Keras APIs, so a downgrade would require a rewrite.</li>
+</ul>
+<p><strong>Verdict:</strong> no TF2 wheel, on any platform, in any VM, with any driver, can use this GPU. The measurement is independent of the passthrough failure in §5.</p>
+<hr />
+<h2 id="8-what-the-card-can-still-do">8. What the card <em>can</em> still do</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Workload</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Media-server transcoding (Jellyfin/Plex)</td>
+<td>⭐ best use — NVDEC decode + NVENC H.264 encode at 1080p</td>
+</tr>
+<tr>
+<td>OBS/streaming encode</td>
+<td>✅ with driver 470 + 11.1-matched ffmpeg</td>
+</tr>
+<tr>
+<td>Display output / desktop</td>
+<td>✅ (the only display adapter in this system)</td>
+</tr>
+<tr>
+<td>HDMI audio out</td>
+<td>✅ via the GK106 audio function</td>
+</tr>
+<tr>
+<td>Kiosk / signage / dashboard wall</td>
+<td>✅ 2×DVI + HDMI, 1080p</td>
+</tr>
+<tr>
+<td>OpenCL 1.2 batch work</td>
+<td>⚠️ works, unremarkable</td>
+</tr>
+<tr>
+<td>Modern games / any AI workload</td>
+<td>❌</td>
+</tr>
+</tbody>
+</table></div>
+<p>Under <code>nouveau</code> specifically, two further limits apply:</p>
+<pre><code>nouveau 0000:01:00.0: [drm] Cannot find any crtc or sizes      # no connector attached
+nouveau 0000:01:00.0: Direct firmware load for nouveau/nve6_fuc084 failed with error -2
+nouveau 0000:01:00.0: msvld: init failed, -19                  # VLD engine dead
+</code></pre>
+<ol>
+<li><strong>No reclocking on Kepler</strong> — the GPU is pinned at boot clocks (~324 MHz), roughly a third of stock performance. Not fixable by configuration.</li>
+<li><strong>Missing <code>nve6_fuc084</code> firmware</strong> disables the hardware video-decode engine (VLD). Extractable from the proprietary blob if <code>nouveau</code> must be kept.</li>
+</ol>
+<hr />
+<h2 id="9-recommended-configuration">9. Recommended configuration</h2>
+<p>For an Ubuntu 24.04 host that wants a working Kepler GPU:</p>
+<ol>
+<li>Install the <strong>6.8 GA kernel</strong> (<code>linux-image-generic</code>) and boot it. Keep the HWE kernel in the GRUB menu as a fallback.</li>
+<li>Install <strong><code>nvidia-driver-470</code></strong> (470.256.02). DKMS builds cleanly against 6.8 — verified.</li>
+<li>Rebuild <strong>ffmpeg against <code>nv-codec-headers</code> 11.1.5.3</strong> if NVENC is required; the distribution binary will reject driver 470.</li>
+<li>Optionally apply <strong><code>keylase/nvidia-patch</code></strong> for 470.256.02 to lift the NVENC/NVDEC session caps.</li>
+<li>Accept the hard limits: H.264-only encode, no CUDA beyond 10.2, no TF2, no tensor cores.</li>
+</ol>
+<hr />
+<h2 id="10-threats-to-validity">10. Threats to validity</h2>
+<ul>
+<li>The passthrough experiment was performed on a single board/firmware combination; other hosts may expose a readable ROM BAR and succeed.</li>
+<li>The 6.8 build test ran in a VM without the physical card; module <em>loading</em> and <code>nvidia-smi</code> against real GK106 hardware on 6.8 were not observed end-to-end. DKMS compilation, which was the open question, is proven.</li>
+<li>NVENC throughput/quality was not benchmarked (no working NVENC path was established on this host).</li>
+<li>Version claims reflect the archive state on 2026-11-10; <code>noble-updates</code> moves.</li>
+</ul>
+<hr />
+<h2 id="appendix-a-diagnostic-command-reference">Appendix A — diagnostic command reference</h2>
+<pre><code class="language-bash"># identity
+lspci -nnk | grep -A4 -iE 'vga|3d'
+uname -r; lspci -vv -s 01:00.0 | grep -E 'LnkCap:|LnkSta:'
+
+# driver state
+lsmod | grep -E 'nvidia|nouveau'
+dkms status
+apt-cache policy linux-modules-nvidia-470-generic-hwe-24.04
+
+# nouveau limits
+dmesg | grep -iE 'nouveau|NVRM'
+for f in /sys/class/drm/card*-*/status; do echo &quot;$f: $(cat $f)&quot;; done
+
+# ffmpeg capability
+ffmpeg -hide_banner -hwaccels
+ffmpeg -hide_banner -encoders | grep nvenc
+strings /usr/lib/x86_64-linux-gnu/libavcodec.so.60 | grep -i 'nvenc API'
+
+# passthrough
+ls /sys/kernel/iommu_groups/*/devices/0000:01:00.*
+cat /proc/driver/nvidia/gpus/*/information
+</code></pre>
+<h2 id="appendix-b-key-log-excerpts">Appendix B — key log excerpts</h2>
+<pre><code>nouveau 0000:01:00.0: NVIDIA GK106 (0e6000a1)
+nouveau 0000:01:00.0: bios: version 80.06.58.00.03
+nouveau 0000:01:00.0: fb: 2048 MiB GDDR5
+nouveau 0000:01:00.0: iccsense: found invalid sensor id: 0
+nouveau 0000:01:00.0: drm: Disabling PCI power management to avoid bug
+[drm] Initialized nouveau 1.4.2 for 0000:01:00.0 on minor 1
+</code></pre>
+<pre><code>nvidia/470.256.02, 6.8.0-147-generic, x86_64: installed
+nvidia/470.256.02, 6.8.0-149-generic, x86_64: installed
+</code></pre>
+<pre><code>NVRM: GPU 0000:01:00.0: RmInitAdapter failed! (0x22:0x56:667)
+</code></pre>
+<hr />
+<h2 id="references">References</h2>
+<ol>
+<li>NVIDIA, <em>Unix Driver Archive</em> — 470.256.02, last branch supporting Kepler. <a href="https://www.nvidia.com/en-us/drivers/unix/">https://www.nvidia.com/en-us/drivers/unix/</a></li>
+<li><code>keylase/nvidia-patch</code> — NVENC/NVDEC session-limit patches, driver 470.256.02 supported. <a href="https://github.com/keylase/nvidia-patch">https://github.com/keylase/nvidia-patch</a></li>
+<li><code>Zagitta/gpu-unlock</code> — tensor-core rate unlock for Turing/Ampere/Ada. <a href="https://github.com/zagitta/gpu-unlock">https://github.com/zagitta/gpu-unlock</a></li>
+<li><code>FFmpeg/nv-codec-headers</code> — tag <code>n11.1.5.3</code> (NVENC API 11.1). <a href="https://github.com/FFmpeg/nv-codec-headers">https://github.com/FFmpeg/nv-codec-headers</a></li>
+<li>NVIDIA, <em>CUDA Toolkit Release Notes</em> — Kepler <code>sm_30</code> removal after CUDA 10.2.</li>
+<li>TensorFlow, <em>Tested build configurations</em> — minimum compute capability 3.5 (5.0 from TF 2.16).</li>
+<li>Linux kernel <code>nouveau</code> driver, Kepler reclocking status.</li>
+</ol>
+        </article>
+
+        <nav class="article-nav article-nav-bottom">
+            <a href="../index.html"><i class="fas fa-arrow-left"></i> Back to profile</a>
+            <a href="kepler-gk106-gpu.md" class="md-source"><i class="fab fa-markdown"></i> Markdown source</a>
+        </nav>
+
+        <footer>
+            <p>&copy; 2026 Dinuka Salwathura</p>
+        </footer>
+    </div>
+</body>
+
+</html>
